@@ -1140,61 +1140,91 @@ bronze_table = delta_mgr.create_table(
 
 ## Correctness Properties
 
+*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
 ### Property 1: Bronze layer raw fidelity
 
 *For any* batch of records submitted to the Bronze layer, reading back from the Bronze Delta table should return records whose content is identical to the original input (no transformation, no field modification), with additional ingestion metadata fields appended.
+
+**Validates: Requirements 1.1, 1.2, 1.3, 2.1**
 
 ### Property 2: Medallion layer progression
 
 *For any* medallion pipeline run that completes successfully, the `current_layer` must have progressed through BRONZE → SILVER → GOLD in order, and the pipeline status must be COMPLETED. No layer may be skipped or processed out of order.
 
+**Validates: Requirements 8.1, 8.2, 8.3**
+
 ### Property 3: Silver validation completeness
 
 *For any* set of records processed by the Silver layer, the sum of `valid_count` and `rejected_count` must equal the total number of records read from the Bronze table. Every record must be either written to Silver or routed to the Dead Letter Queue — none may be silently dropped.
 
+**Validates: Requirements 3.3, 16.2**
+
 ### Property 4: Silver deduplication correctness
 
-*For any* set of records with duplicate values on the configured dedup keys, the Silver layer output should contain exactly one record per unique dedup key combination, and the retained record should be the one with the latest timestamp.
+*For any* set of records with duplicate values on the configured dedup keys, the Silver layer output should contain exactly one record per unique dedup key combination, and the retained record should be the one with the latest timestamp. All output records must be a subset of the input records.
+
+**Validates: Requirements 4.1, 4.2, 4.3, 4.4**
 
 ### Property 5: Silver validation pipeline integration
 
 *For any* record processed by the Silver layer, the existing 3-layer validation pipeline (Ingestion → Schema → Business Rule) must be invoked in order. A record that fails at layer N should not be passed to layer N+1, and the validation audit record should reflect the outcome of each executed layer.
 
+**Validates: Requirements 3.1, 3.2, 3.4**
+
 ### Property 6: Gold aggregation correctness
 
 *For any* aggregation configuration applied to a Silver table, the Gold output should contain exactly one row per unique combination of `group_by_columns`, and each aggregation value (SUM, AVG, COUNT, MIN, MAX) should be mathematically correct for the corresponding group.
+
+**Validates: Requirements 6.1, 6.2, 6.3, 6.4**
 
 ### Property 7: Gold incremental consistency
 
 *For any* incremental Gold refresh, the resulting Gold table should be equivalent to a full recomputation from the complete Silver table. That is, running incremental refresh N times should produce the same result as a single full refresh.
 
+**Validates: Requirements 7.1, 7.2, 7.3**
+
 ### Property 8: Medallion pipeline idempotency
 
 *For any* successfully completed medallion pipeline run, re-submitting with the same idempotency key should return the original result without re-executing any layer, and the Bronze, Silver, and Gold tables should remain unchanged.
+
+**Validates: Requirements 9.1, 9.2, 9.3**
 
 ### Property 9: RBAC enforcement on medallion operations
 
 *For any* medallion pipeline submission, the orchestrator must check RBAC authorization before processing. If the user lacks the required permission, no data should be written to any medallion layer, and an `AuthorizationDeniedError` should be raised.
 
+**Validates: Requirements 14.1, 14.2, 14.3**
+
 ### Property 10: Medallion pipeline logging completeness
 
 *For any* medallion pipeline run (successful or failed), the Log Store should contain entries for: pipeline start, each layer's start and completion (or failure), and pipeline end. Each entry should include the correlation ID for end-to-end tracing.
+
+**Validates: Requirements 15.1, 15.2, 15.3, 15.4, 15.5**
 
 ### Property 11: Delta table write atomicity
 
 *For any* write operation to a Delta table (Bronze, Silver, or Gold), either all records are committed or none are. There should be no state where a partial set of records from a single write is visible.
 
+**Validates: Requirement 10.2**
+
 ### Property 12: Stream micro-batch Bronze landing
 
 *For any* stream micro-batch, all records in the batch must be landed in the Bronze Delta table before Silver processing begins. The Bronze record count must equal the micro-batch size.
+
+**Validates: Requirement 2.3**
 
 ### Property 13: Delta table schema enforcement
 
 *For any* write to a Silver or Gold Delta table, records that do not conform to the table's schema must be rejected. The Delta table should never contain records that violate its schema definition.
 
+**Validates: Requirement 5.1**
+
 ### Property 14: Medallion pipeline failure rollback
 
 *For any* medallion pipeline run that fails at any layer, the pipeline status should be set to FAILED, the error should be logged with the correlation ID, and the failure should not corrupt data written by previous successful runs.
+
+**Validates: Requirements 8.4, 16.1, 16.3**
 
 ## Error Handling
 
